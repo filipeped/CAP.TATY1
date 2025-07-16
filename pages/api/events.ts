@@ -37,9 +37,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const userAgent = req.headers["user-agent"] || "";
 
   const ALLOWED_ORIGINS = [
-    "https://www.digitalpaisagismo.com.br",
-    "https://cap.digitalpaisagismo.com.br",
-    "https://atendimento.digitalpaisagismo.com.br",
+    "https://www.digitalpaisagismo.com",
+    "https://cap.digitalpaisagismo.com",
+    "https://atendimento.digitalpaisagismo.com",
     "http://localhost:3000"
   ];
   const origin = req.headers.origin;
@@ -67,7 +67,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const sessionId = event.session_id || "";
       const externalId = sessionId ? hashSHA256(sessionId) : "";
       const eventId = event.event_id || `evt_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`;
-      const eventSourceUrl = event.event_source_url || "https://www.digitalpaisagismo.com.br";
+      const eventSourceUrl = event.event_source_url || "https://www.digitalpaisagismo.com";
       const eventTime = event.event_time || Math.floor(Date.now() / 1000);
       const actionSource = event.action_source || "website";
 
