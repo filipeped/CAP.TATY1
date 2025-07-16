@@ -1,74 +1,155 @@
+// ✅ DIGITAL PAISAGISMO CAPI V6 - LEAD COMPLETO
+// Proxy Meta CAPI com captação de nome, e-mail, telefone e sobrenome com hash SHA-256
+
 import type { NextApiRequest, NextApiResponse } from "next";
 import crypto from "crypto";
+import zlib from "zlib";
 
 const PIXEL_ID = "1802124647065004";
-const ACCESS_TOKEN = "EAAQfmxkTTZCcBPKseK7aMXRymZBlmaBcxYDZAi6msJWMZCKzkn0EAmNqKYWJvO7UZBzptrIJv4Sm6eZB6JYhwGqzKUaKZCfdTojLqlQpfplibkSZAMwK2YYiZAQbV1xJhdzebn8AIBk4ovTvkNSZBhG6oujGjITo2uSUY6P96mfFz9f6OXKEWX9FczbNDBuQefdQZDZD";
+const ACCESS_TOKEN = "EAAQfmxkTTZCcBPBmBiRP8FYrIL2orbfPJNwvbj0wuRLxMr9XLS2LEZC82bfZCYlBu62SqX7wrPhc9wlPIWA3p2rjm4QVZBkpAxMG9fCzXNwI92OZCylcii5kZB1zbXR7M6N8f4TFtQqBL7Gx7Cgm8MxStyRqzIK28ZAvf4ZAOWsiGqIExzJFe7mxI3UDiszotgZDZD";
 const META_URL = `https://graph.facebook.com/v19.0/${PIXEL_ID}/events`;
 
-function hashSHA256(value: string): string {
-  return crypto.createHash("sha256").update(value.toLowerCase().trim()).digest("hex");
+function hashSHA256(value: string) {
+  return crypto.createHash("sha256").update(value.trim().toLowerCase()).digest("hex");
+}
+
+const RATE_LIMIT = 30;
+const rateLimitMap = new Map();
+
+function rateLimit(ip: string): boolean {
+  const now = Date.now();
+  const windowMs = 60000;
+  if (!rateLimitMap.has(ip)) rateLimitMap.set(ip, []);
+  const timestamps = rateLimitMap.get(ip)!.filter((t: number) => now - t < windowMs);
+  if (timestamps.length >= RATE_LIMIT) return false;
+  timestamps.push(now);
+  rateLimitMap.set(ip, timestamps);
+  if (rateLimitMap.size > 1000) {
+    const oldestKey = rateLimitMap.keys().next().value;
+    rateLimitMap.delete(oldestKey);
+  }
+  return true;
 }
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  res.setHeader("Access-Control-Allow-Origin", "*");
+  const startTime = Date.now();
+  const ip = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.socket.remoteAddress || "unknown";
+  const userAgent = req.headers["user-agent"] || "";
+
+  const ALLOWED_ORIGINS = [
+    "https://www.digitalpaisagismo.com.br",
+    "https://cap.digitalpaisagismo.com.br",
+    "https://atendimento.digitalpaisagismo.com.br",
+    "http://localhost:3000"
+  ];
+  const origin = req.headers.origin;
+  res.setHeader("Access-Control-Allow-Origin", ALLOWED_ORIGINS.includes(origin) ? origin : "https://www.digitalpaisagismo.com");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "*");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With");
+  res.setHeader("Access-Control-Allow-Credentials", "true");
+
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader("Referrer-Policy", "no-referrer");
+  res.setHeader("X-Robots-Tag", "noindex, nofollow");
+  res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
 
   if (req.method === "OPTIONS") return res.status(200).end();
   if (req.method !== "POST") return res.status(405).json({ error: "Method Not Allowed" });
+  if (!rateLimit(ip)) return res.status(429).json({ error: "Limite de requisições excedido", retry_after: 60 });
 
   try {
-    if (!req.body || !req.body.data || !Array.isArray(req.body.data)) {
-      console.log("❌ Payload inválido:", req.body);
-      return res.status(400).json({ error: "Payload inválido - campo 'data' deve ser um array" });
+    if (!req.body?.data || !Array.isArray(req.body.data)) {
+      return res.status(400).json({ error: "Payload inválido - campo 'data' obrigatório" });
     }
 
-    const { session_id, email, phone, first_name, last_name, fbp, fbc } = req.body;
+    const enrichedData = req.body.data.map((event: any) => {
+      const sessionId = event.session_id || "";
+      const externalId = sessionId ? hashSHA256(sessionId) : "";
+      const eventId = event.event_id || `evt_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`;
+      const eventSourceUrl = event.event_source_url || "https://www.digitalpaisagismo.com.br";
+      const eventTime = event.event_time || Math.floor(Date.now() / 1000);
+      const actionSource = event.action_source || "website";
 
-    const userData = {
-      em: email ? hashSHA256(email) : undefined,
-      ph: phone ? hashSHA256(phone) : undefined,
-      fn: first_name ? hashSHA256(first_name) : undefined,
-      ln: last_name ? hashSHA256(last_name) : undefined,
-      external_id: session_id ? hashSHA256(session_id) : undefined,
-      client_ip_address: Array.isArray(req.headers["x-forwarded-for"])
-        ? req.headers["x-forwarded-for"][0]
-        : typeof req.headers["x-forwarded-for"] === "string"
-          ? req.headers["x-forwarded-for"].split(",")[0].trim()
-          : req.socket?.remoteAddress || undefined,
-      client_user_agent: req.headers["user-agent"] || undefined,
-      fbp: fbp || undefined,
-      fbc: fbc || undefined,
-    };
+      const email = event.user_data?.email || "";
+      const phone = event.user_data?.phone || "";
+      const first_name = event.user_data?.first_name || "";
+      const last_name = event.user_data?.last_name || "";
 
-    const enhancedPayload = {
-      data: req.body.data.map((event: any) => ({
+      const customData = {
+        value: event.custom_data?.value ?? 0,
+        currency: event.custom_data?.currency ?? "BRL",
+        ...event.custom_data
+      };
+
+      return {
         ...event,
-        event_source_url:
-          event.event_source_url ||
-          req.headers.referer ||
-          req.headers.origin ||
-          "https://www.digitalpaisagismo.com",
-        action_source: "website",
-        event_id: event.event_id || `${Date.now()}-${Math.random()}`,
-        event_time: event.event_time || Math.floor(Date.now() / 1000),
-        user_data: userData
-      }))
-    };
-
-    console.log("🔄 Enviando evento para Meta...");
-    const fbResponse = await fetch(`${META_URL}?access_token=${ACCESS_TOKEN}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(enhancedPayload)
+        event_id: eventId,
+        event_time: eventTime,
+        event_source_url: eventSourceUrl,
+        action_source: actionSource,
+        custom_data: customData,
+        user_data: {
+          external_id: externalId,
+          em: email ? hashSHA256(email) : undefined,
+          ph: phone ? hashSHA256(phone.replace(/\D/g, "")) : undefined,
+          fn: first_name ? hashSHA256(first_name) : undefined,
+          ln: last_name ? hashSHA256(last_name) : undefined,
+          client_ip_address: ip,
+          client_user_agent: userAgent,
+          fbp: typeof event.user_data?.fbp === "string" && event.user_data.fbp.startsWith("fb.") ? event.user_data.fbp : undefined,
+          fbc: typeof event.user_data?.fbc === "string" && event.user_data.fbc.startsWith("fb.") ? event.user_data.fbc : undefined
+        }
+      };
     });
 
-    const result = await fbResponse.json();
-    console.log("✅ Resposta da Meta:", result);
-    res.status(fbResponse.status).json(result);
-  } catch (err) {
-    console.error("❌ Erro interno:", err);
+    const payload = { data: enrichedData };
+    const shouldCompress = Buffer.byteLength(JSON.stringify(payload)) > 2048;
+    const body = shouldCompress ? zlib.gzipSync(JSON.stringify(payload)) : JSON.stringify(payload);
+    const headers = {
+      "Content-Type": "application/json",
+      "Connection": "keep-alive",
+      "User-Agent": "DigitalPaisagismo-CAPI-Proxy/1.0",
+      ...(shouldCompress && { "Content-Encoding": "gzip" })
+    };
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
+
+    const response = await fetch(`${META_URL}?access_token=${ACCESS_TOKEN}`, {
+      method: "POST",
+      headers,
+      body,
+      signal: controller.signal
+    });
+
+    clearTimeout(timeout);
+    const data = await response.json();
+    const responseTime = Date.now() - startTime;
+
+    if (!response.ok) {
+      return res.status(response.status).json({
+        error: "Erro da Meta",
+        details: data,
+        processing_time_ms: responseTime
+      });
+    }
+
+    res.status(200).json({
+      ...data,
+      proxy_metadata: {
+        processing_time_ms: responseTime,
+        events_processed: enrichedData.length,
+        compression_used: shouldCompress,
+        timestamp: new Date().toISOString()
+      }
+    });
+
+  } catch (error: any) {
+    console.error("❌ Erro no Proxy CAPI:", error);
+    if (error.name === "AbortError") {
+      return res.status(408).json({ error: "Timeout ao enviar evento para a Meta", timeout_ms: 8000 });
+    }
     res.status(500).json({ error: "Erro interno no servidor CAPI." });
   }
 }
- 
