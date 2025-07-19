@@ -3,7 +3,7 @@ import crypto from "crypto";
 import zlib from "zlib";
 
 const PIXEL_ID = "1267249108110418";
-const ACCESS_TOKEN = "EAAQfmxkTTZCcBPMUBbdZAnJ2UpFgpDNfGs7phoz4iU0CT8G7St4HS3TOmRpDlLSG3oEky1sYiVZAkDmBRdsYgrZCgWP99N9wZAhSqPYwZAGxqPZBhAGVYuIDSnYQ9LtGwccWyitNNd1VfraGmvf2vZBETtLwlTdCKaEjYhIq0lZAfHRynUnbIZB8RptANoTwUhdgZDZD";
+const ACCESS_TOKEN = "EAAQfmxkTTZCcBPBf7mDtkzwIJTigB0DpENY9vty86uZAKdelGkgjfaF6FhgjQd0T4L9JMZBllP9j6nIrASALVrLvf7a0jiXs60bJRDOS4DnOgEdoZBG5dZCtXzObcjlCiBx5AQUnrtH4KB30onnRqRGpJu4Ee7CbacnZBmZBylanaRnq6o6sZCb9QOpctLaZAWwZDZD";
 const META_URL = `https://graph.facebook.com/v19.0/${PIXEL_ID}/events`;
 
 function hashSHA256(value: string) {
