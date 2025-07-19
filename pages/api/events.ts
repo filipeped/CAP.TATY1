@@ -48,15 +48,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const enrichedData = req.body.data.map((event: any) => {
       const sessionId = event.session_id || "";
       const externalId = sessionId ? hashSHA256(sessionId) : "";
-      const eventId = event.event_id || `evt_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`;
+      const eventId = event.event_id || `evt_${Date.now()}_${Math.random().toString(36).substr(2, 10)}`;
       const eventName = event.event_name || "Lead";
       const eventSourceUrl = event.event_source_url || origin || req.headers.referer || "https://www.digitalpaisagismo.com";
       const eventTime = event.event_time || Math.floor(Date.now() / 1000);
       const actionSource = event.action_source || "website";
 
       const customData = { ...event.custom_data };
-      delete customData.value;
-      delete customData.currency;
+      // Só remove value/currency de eventos comportamentais
+      if (["PageView", "ViewContent", "VideoProgress"].includes(eventName)) {
+        delete customData.value;
+        delete customData.currency;
+      }
 
       return {
         event_name: eventName,
