@@ -52,7 +52,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   const ALLOWED_ORIGINS = [
     "https://www.digitalpaisagismo.com.",
-    "https://digitalpaisagismo.com.br", // <-- Adicionado domínio sem www
+    "https://digitalpaisagismo.com", // <-- Adicionado domínio sem www
     "https://cap.digitalpaisagismo.com",
     "https://atendimento.digitalpaisagismo.com",
     "https://projeto.digitalpaisagismo.com",
