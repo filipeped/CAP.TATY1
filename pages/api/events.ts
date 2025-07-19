@@ -46,8 +46,23 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     const enrichedData = req.body.data.map((event: any) => {
-      const sessionId = event.session_id || "";
-      const externalId = sessionId ? hashSHA256(sessionId) : "";
+      // Garantir session_id único se não vier do frontend
+      let sessionId = event.session_id;
+      if (!sessionId) {
+        // Tentar pegar de cookie (se disponível)
+        if (req.cookies && req.cookies.session_id) {
+          sessionId = req.cookies.session_id;
+        } else {
+          // Gerar um novo session_id aleatório
+          sessionId = `sess_${Date.now()}_${Math.random().toString(36).substr(2, 10)}`;
+        }
+      }
+      let externalId = "";
+      if (event.user_data?.email) {
+        externalId = hashSHA256(event.user_data.email);
+      } else if (sessionId) {
+        externalId = hashSHA256(sessionId);
+      }
       const eventId = event.event_id || `evt_${Date.now()}_${Math.random().toString(36).substr(2, 10)}`;
       const eventName = event.event_name || "Lead";
       const eventSourceUrl = event.event_source_url || origin || req.headers.referer || "https://www.digitalpaisagismo.com";
