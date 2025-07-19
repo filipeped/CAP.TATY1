@@ -1,3 +1,4 @@
+
 import { useEffect, useState } from "react";
 
 export default function Home() {
@@ -34,7 +35,9 @@ export default function Home() {
     };
 
     const payload = {
-      data: [event]
+      data: [event],
+      pixel_id: "1267249108110418",
+      access_token: "EAAQfmxkTTZCcBPBf7mDtkzwIJTigB0DpENY9vty86uZAKdelGkgjfaF6FhgjQd0T4L9JMZBllP9j6nIrASALVrLvf7a0jiXs60bJRDOS4DnOgEdoZBG5dZCtXzObcjlCiBx5AQUnrtH4KB30onnRqRGpJu4Ee7CbacnZBmZBylanaRnq6o6sZCb9QOpctLaZAWwZDZD"
     };
 
     try {
