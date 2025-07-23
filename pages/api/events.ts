@@ -5,8 +5,8 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import crypto from "crypto";
 import zlib from "zlib";
 
-const PIXEL_ID = "1267249108110418";
-const ACCESS_TOKEN = "EAAQfmxkTTZCcBPBf7mDtkzwIJTigB0DpENY9vty86uZAKdelGkgjfaF6FhgjQd0T4L9JMZBllP9j6nIrASALVrLvf7a0jiXs60bJRDOS4DnOgEdoZBG5dZCtXzObcjlCiBx5AQUnrtH4KB30onnRqRGpJu4Ee7CbacnZBmZBylanaRnq6o6sZCb9QOpctLaZAWwZDZD";
+const PIXEL_ID = "765087775987515";
+const ACCESS_TOKEN = "EAAQfmxkTTZCcBPCbRpJotoFDkHjb67ZBj6DaEpatQ7yHF5soou25TVtOTEkOZCKA0Lj3kZCPsZA1VxcUa3ZCVjYP0MwP4gb1524rR9vr9gmf3ZCwzZANQgbN9ZAIb0no0gwZAB5NAW7mGgTmQZADvYO4ptKgesaL9O2vThiHAW37wS2KGKzrgAfkcTRpc1YMYmI1gZDZD";
 const META_URL = `https://graph.facebook.com/v19.0/${PIXEL_ID}/events`;
 
 // ✅ CORREÇÃO CRÍTICA: Normalização de acentos para nomes brasileiros
