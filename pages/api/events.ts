@@ -1,5 +1,4 @@
-// ✅ DIGITAL PAISAGISMO CAPI V6.3 - FBCLID CORRIGIDO
-// Corrigido: hashSHA256 sem toLowerCase, processFbc robusto, validação completa
+// Corrigido: normalização de acentos, arrays para user_data, validação robusta FBP/FBC
 
 import type { NextApiRequest, NextApiResponse } from "next";
 import crypto from "crypto";
@@ -92,7 +91,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   const ALLOWED_ORIGINS = [
     "https://www.digitalpaisagismo.com",
-    "https://digitalpaisagismo.com",
+    "https://digitalpaisagismo.com", // <-- Adicionado domínio sem www
     "https://cap.digitalpaisagismo.com",
     "https://atendimento.digitalpaisagismo.com",
     "https://projeto.digitalpaisagismo.com",
@@ -129,13 +128,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           sessionId = `sess_${Date.now()}_${Math.random().toString(36).substr(2, 10)}`;
         }
       }
-      
-      let externalId = "";
-      if (event.user_data?.email) {
-        externalId = hashSHA256(event.user_data.email);
-      } else if (sessionId) {
-        externalId = hashSHA256(sessionId);
-      }
+      // ✅ SEM PII: Usar apenas session_id para external_id
+      const externalId = sessionId ? hashSHA256(sessionId) : null;
       
       const eventId = event.event_id || `evt_${Date.now()}_${Math.random().toString(36).substr(2, 10)}`;
       const eventName = event.event_name || "Lead";
@@ -149,19 +143,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         delete customData.value;
         delete customData.currency;
       }
-      
+      // Para VideoProgress, garantir progress, duration, current_time
       if (eventName === "VideoProgress") {
         customData.progress = customData.progress || 0;
         customData.duration = customData.duration || 0;
         customData.current_time = customData.current_time || 0;
       }
-      
+      // Para Lead, garantir value/currency dinâmicos
       if (eventName === "Lead") {
         customData.value = typeof customData.value !== 'undefined' ? customData.value : 5000;
         customData.currency = customData.currency || "BRL";
       }
 
-      // ✅ CORREÇÃO: Processamento robusto de user_data
+      // ✅ SEM PII: user_data apenas com dados técnicos e geo-enrichment
       const userData: any = {
         ...(externalId && { external_id: [externalId] }),
         client_ip_address: ip,
@@ -187,6 +181,23 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           console.log('✅ FBC processado e preservado:', processedFbc);
         }
       }
+      
+      // 🌍 GEO-ENRICHMENT: Preservar dados de geolocalização do frontend
+      if (typeof event.user_data?.country === "string" && event.user_data.country.trim()) {
+        userData.country = event.user_data.country.toLowerCase().trim();
+        console.log('🌍 Country adicionado:', userData.country);
+      }
+      if (typeof event.user_data?.state === "string" && event.user_data.state.trim()) {
+        userData.state = event.user_data.state.toLowerCase().trim();
+        console.log('🌍 State adicionado:', userData.state);
+      }
+      if (typeof event.user_data?.city === "string" && event.user_data.city.trim()) {
+        userData.city = event.user_data.city.toLowerCase().trim();
+        console.log('🌍 City adicionado:', userData.city);
+      }
+
+      // ❌ REMOVIDO: Todo processamento de PII (email, phone, first_name, last_name)
+      // Não coletamos mais esses dados no formulário
 
       return {
         event_name: eventName,
@@ -212,10 +223,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 8000);
 
-    console.log("🔄 Enviando evento para Meta CAPI:", {
+    console.log("🔄 Enviando evento para Meta CAPI (SEM PII):", {
       events: enrichedData.length,
       event_names: enrichedData.map(e => e.event_name),
-      has_pii: enrichedData.some(e => e.user_data.em || e.user_data.ph || e.user_data.fn || e.user_data.ln),
+      has_pii: false, // ✅ Sempre false agora
+      has_geo_data: enrichedData.some(e => e.user_data.country || e.user_data.state || e.user_data.city),
+      geo_locations: enrichedData
+        .filter(e => e.user_data.country)
+        .map(e => `${e.user_data.country}/${e.user_data.state}/${e.user_data.city}`)
+        .slice(0, 3),
       fbc_processed: enrichedData.filter(e => e.user_data.fbc).length
     });
 
@@ -247,20 +263,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     console.log("✅ Evento enviado com sucesso para Meta CAPI:", {
       events_processed: enrichedData.length,
       processing_time_ms: responseTime,
-      compression_used: shouldCompress,
-      fbc_events: enrichedData.filter(e => e.user_data.fbc).length
+      compression_used: shouldCompress
     });
 
     res.status(200).json({
-      ...data,
-      proxy_metadata: {
-        processing_time_ms: responseTime,
-        events_processed: enrichedData.length,
-        compression_used: shouldCompress,
-        timestamp: new Date().toISOString(),
-        pii_processed: enrichedData.some(e => e.user_data.em || e.user_data.ph || e.user_data.fn || e.user_data.ln),
-        fbc_processed: enrichedData.filter(e => e.user_data.fbc).length
-      }
+      ...data
     });
 
   } catch (error: any) {
