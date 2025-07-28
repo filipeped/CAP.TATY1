@@ -1,73 +1,114 @@
-// ✅ DIGITAL PAISAGISMO CAPI V6.3 - FBCLID CORRIGIDO
-// Corrigido: hashSHA256 sem toLowerCase, processFbc robusto, validação completa
+// ✅ DIGITAL PAISAGISMO CAPI V6.2 - COMPLETO E OTIMIZADO
+// Corrigido: normalização de acentos, arrays para user_data, validação robusta FBP/FBC
 
 import type { NextApiRequest, NextApiResponse } from "next";
 import crypto from "crypto";
 import zlib from "zlib";
 
+// Sistema de logging condicional para API
+const isDevelopment = process.env.NODE_ENV === 'development';
+const apiLogger = {
+  log: (message: string, data?: any) => {
+    if (isDevelopment) {
+      if (data) {
+        console.log(message, data);
+      } else {
+        console.log(message);
+      }
+    }
+  },
+  warn: (message: string, data?: any) => {
+    if (data) {
+      console.warn(message, data);
+    } else {
+      console.warn(message);
+    }
+  },
+  error: (message: string, data?: any) => {
+    if (data) {
+      console.error(message, data);
+    } else {
+      console.error(message);
+    }
+  }
+};
+
 const PIXEL_ID = "765087775987515";
 const ACCESS_TOKEN = "EAAQfmxkTTZCcBPHGbA2ojC29bVbNPa6GM3nxMxsZC29ijBmuyexVifaGnrjFZBZBS6LEkaR29X3tc5TWn4SHHffeXiPvexZAYKP5mTMoYGx5AoVYaluaqBTtiKIjWALxuMZAPVcBk1PuYCb0nJfhpzAezh018LU3cT45vuEflMicoQEHHk3H5YKNVAPaUZC6yzhcQZDZD";
 const META_URL = `https://graph.facebook.com/v19.0/${PIXEL_ID}/events`;
 
-// ✅ CORREÇÃO CRÍTICA: Removido .toLowerCase() para preservar fbclid
+// ✅ CORREÇÃO CRÍTICA: Normalização de acentos para nomes brasileiros
 function hashSHA256(value: string) {
   if (!value || typeof value !== 'string') {
-    console.warn('⚠️ hashSHA256: Valor inválido:', value);
+    apiLogger.warn('⚠️ hashSHA256: Valor inválido:', value);
     return null;
   }
   return crypto.createHash("sha256")
     .update(
       value
         .trim()
-        // ❌ REMOVIDO: .toLowerCase() - Esta linha modificava o fbclid!
+        .toLowerCase()
         .normalize("NFD")
-        .replace(/[\u0300-\u036f]/g, "") // Remove acentos
+        .replace(/[ -\u036f]/g, "") // Remove acentos
     )
     .digest("hex");
 }
 
-// ✅ NOVA FUNÇÃO: Processamento robusto do FBC
-function processFbc(fbc: string): string | null {
-  if (!fbc || typeof fbc !== 'string') {
-    console.warn('⚠️ FBC inválido:', fbc);
-    return null;
-  }
-
-  const trimmedFbc = fbc.trim();
-  
-  // Formato padrão: fb.1.timestamp.fbclid
-  const fbcPattern = /^fb\.1\.[0-9]+\.[A-Za-z0-9_-]+$/;
-  if (fbcPattern.test(trimmedFbc)) {
-    console.log('✅ FBC válido (formato padrão):', trimmedFbc);
-    return trimmedFbc;
-  }
-  
-  // Formato fbclid puro (sem prefixo)
-  const fbclidPattern = /^[A-Za-z0-9_-]+$/;
-  if (fbclidPattern.test(trimmedFbc)) {
-    const timestamp = Math.floor(Date.now() / 1000);
-    const formattedFbc = `fb.1.${timestamp}.${trimmedFbc}`;
-    console.log('✅ FBC formatado de fbclid puro:', formattedFbc);
-    return formattedFbc;
-  }
-  
-  // Formato com prefixo fbclid=
-  if (trimmedFbc.startsWith('fbclid=')) {
-    const fbclid = trimmedFbc.substring(7);
-    if (fbclidPattern.test(fbclid)) {
-      const timestamp = Math.floor(Date.now() / 1000);
-      const formattedFbc = `fb.1.${timestamp}.${fbclid}`;
-      console.log('✅ FBC formatado de fbclid com prefixo:', formattedFbc);
-      return formattedFbc;
+// ✅ GEO-ENRICHMENT: Função para obter localização via IP
+async function getGeoLocation(ip: string) {
+  try {
+    // Validar IP antes de fazer a requisição
+    if (!ip || ip === 'unknown' || ip === '127.0.0.1' || ip === '::1') {
+      return null;
     }
+
+    const response = await fetch(`https://ipapi.co/${ip}/json/`, {
+      method: 'GET',
+      headers: {
+        'User-Agent': 'DigitalPaisagismo-GeoEnrich/1.0'
+      },
+      signal: AbortSignal.timeout(3000) // Timeout de 3s para geo-enrichment
+    });
+
+    if (!response.ok) {
+      apiLogger.warn('⚠️ Geo API falhou:', response.status);
+      return null;
+    }
+
+    const data = await response.json();
+    
+    // Validar se os dados são válidos
+    if (data.error || !data.country_name) {
+      apiLogger.warn('⚠️ Geo dados inválidos:', data);
+      return null;
+    }
+
+    const geoData = {
+      country: data.country_name || data.country_code,
+      state: data.region,
+      city: data.city
+    };
+
+    apiLogger.log('🌍 Geo-enrichment sucesso:', {
+      ip: ip.substring(0, 8) + '...',
+      country: geoData.country,
+      state: geoData.state,
+      city: geoData.city
+    });
+
+    return geoData;
+  } catch (error) {
+    apiLogger.warn('⚠️ Erro no geo-enrichment:', error instanceof Error ? error.message : 'Unknown error');
+    return null; // Falha silenciosa
   }
-  
-  console.warn('⚠️ FBC formato inválido:', trimmedFbc);
-  return null;
 }
 
 const RATE_LIMIT = 30;
 const rateLimitMap = new Map();
+
+// Cache para geo-enrichment (evitar requests duplicados)
+const geoCache = new Map();
+const GEO_CACHE_TTL = 24 * 60 * 60 * 1000; // 24 horas
 
 function rateLimit(ip: string): boolean {
   const now = Date.now();
@@ -92,7 +133,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   const ALLOWED_ORIGINS = [
     "https://www.digitalpaisagismo.com",
-    "https://digitalpaisagismo.com",
+    "https://digitalpaisagismo.com", // <-- Adicionado domínio sem www
     "https://cap.digitalpaisagismo.com",
     "https://atendimento.digitalpaisagismo.com",
     "https://projeto.digitalpaisagismo.com",
@@ -119,6 +160,30 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(400).json({ error: "Payload inválido - campo 'data' obrigatório" });
     }
 
+    // ✅ GEO-ENRICHMENT: Obter dados de localização com cache
+    let geoData = null;
+    const cacheKey = `geo_${ip}`;
+    const cachedGeo = geoCache.get(cacheKey);
+    
+    if (cachedGeo && (Date.now() - cachedGeo.timestamp) < GEO_CACHE_TTL) {
+      geoData = cachedGeo.data;
+      apiLogger.log('🌍 Geo-enrichment (cache):', geoData);
+    } else {
+      geoData = await getGeoLocation(ip);
+      if (geoData) {
+        geoCache.set(cacheKey, {
+          data: geoData,
+          timestamp: Date.now()
+        });
+        
+        // Limpar cache antigo (manter apenas 100 entradas)
+        if (geoCache.size > 100) {
+          const oldestKey = geoCache.keys().next().value;
+          geoCache.delete(oldestKey);
+        }
+      }
+    }
+
     const enrichedData = req.body.data.map((event: any) => {
       // Garantir session_id único se não vier do frontend
       let sessionId = event.session_id;
@@ -129,16 +194,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           sessionId = `sess_${Date.now()}_${Math.random().toString(36).substr(2, 10)}`;
         }
       }
-      
       let externalId = "";
       if (event.user_data?.email) {
         externalId = hashSHA256(event.user_data.email);
       } else if (sessionId) {
         externalId = hashSHA256(sessionId);
       }
-      
       const eventId = event.event_id || `evt_${Date.now()}_${Math.random().toString(36).substr(2, 10)}`;
       const eventName = event.event_name || "Lead";
+      // Novo: event_source_url dinâmico
       const eventSourceUrl = event.event_source_url || origin || req.headers.referer || "https://www.digitalpaisagismo.com";
       const eventTime = event.event_time ? Math.floor(Number(event.event_time)) : Math.floor(Date.now() / 1000);
       const actionSource = event.action_source || "website";
@@ -149,43 +213,34 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         delete customData.value;
         delete customData.currency;
       }
-      
+      // Para VideoProgress, garantir progress, duration, current_time
       if (eventName === "VideoProgress") {
         customData.progress = customData.progress || 0;
         customData.duration = customData.duration || 0;
         customData.current_time = customData.current_time || 0;
       }
-      
+      // Para Lead, garantir value/currency dinâmicos
       if (eventName === "Lead") {
         customData.value = typeof customData.value !== 'undefined' ? customData.value : 5000;
         customData.currency = customData.currency || "BRL";
       }
 
-      // ✅ CORREÇÃO: Processamento robusto de user_data
+      // ✅ GEO-ENRICHMENT: Padronizar user_data com dados de localização
       const userData: any = {
         ...(externalId && { external_id: [externalId] }),
         client_ip_address: ip,
         client_user_agent: userAgent,
+        ...(geoData && {
+          country: geoData.country,
+          state: geoData.state,
+          city: geoData.city
+        }),
       };
-      
-      // Processamento robusto do FBP
       if (typeof event.user_data?.fbp === "string" && event.user_data.fbp.startsWith("fb.")) {
-        const fbpPattern = /^fb\.[0-9]+\.[0-9]+\.[A-Za-z0-9_-]+$/;
-        if (fbpPattern.test(event.user_data.fbp)) {
-          userData.fbp = event.user_data.fbp;
-          console.log('✅ FBP válido preservado:', event.user_data.fbp);
-        } else {
-          console.warn('⚠️ FBP formato inválido ignorado:', event.user_data.fbp);
-        }
+        userData.fbp = event.user_data.fbp;
       }
-      
-      // ✅ CORREÇÃO: Processamento robusto do FBC usando a nova função
-      if (event.user_data?.fbc) {
-        const processedFbc = processFbc(event.user_data.fbc);
-        if (processedFbc) {
-          userData.fbc = processedFbc;
-          console.log('✅ FBC processado e preservado:', processedFbc);
-        }
+      if (typeof event.user_data?.fbc === "string" && event.user_data.fbc.startsWith("fb.")) {
+        userData.fbc = event.user_data.fbc;
       }
 
       return {
@@ -210,13 +265,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     };
 
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 8000);
+    const timeout = setTimeout(() => controller.abort(), 5000);
 
-    console.log("🔄 Enviando evento para Meta CAPI:", {
+    apiLogger.log("🔄 Enviando evento para Meta CAPI:", {
       events: enrichedData.length,
       event_names: enrichedData.map(e => e.event_name),
-      has_pii: enrichedData.some(e => e.user_data.em || e.user_data.ph || e.user_data.fn || e.user_data.ln),
-      fbc_processed: enrichedData.filter(e => e.user_data.fbc).length
+      has_pii: enrichedData.some(e => e.user_data.em || e.user_data.ph || e.user_data.fn || e.user_data.ln)
     });
 
     const response = await fetch(`${META_URL}?access_token=${ACCESS_TOKEN}`, {
@@ -231,7 +285,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const responseTime = Date.now() - startTime;
 
     if (!response.ok) {
-      console.error("❌ Erro da Meta CAPI:", {
+      apiLogger.error("❌ Erro da Meta CAPI:", {
         status: response.status,
         data,
         events: enrichedData.length
@@ -244,29 +298,22 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       });
     }
 
-    console.log("✅ Evento enviado com sucesso para Meta CAPI:", {
+    apiLogger.log("✅ Evento enviado com sucesso para Meta CAPI:", {
       events_processed: enrichedData.length,
       processing_time_ms: responseTime,
       compression_used: shouldCompress,
-      fbc_events: enrichedData.filter(e => e.user_data.fbc).length
+      geo_enriched: geoData ? `${geoData.city}, ${geoData.state}, ${geoData.country}` : 'N/A'
     });
 
     res.status(200).json({
       ...data,
-      proxy_metadata: {
-        processing_time_ms: responseTime,
-        events_processed: enrichedData.length,
-        compression_used: shouldCompress,
-        timestamp: new Date().toISOString(),
-        pii_processed: enrichedData.some(e => e.user_data.em || e.user_data.ph || e.user_data.fn || e.user_data.ln),
-        fbc_processed: enrichedData.filter(e => e.user_data.fbc).length
-      }
+      geo_enriched: geoData ? `${geoData.city}, ${geoData.state}, ${geoData.country}` : null
     });
 
   } catch (error: any) {
-    console.error("❌ Erro no Proxy CAPI:", error);
+    apiLogger.error("❌ Erro no Proxy CAPI:", error);
     if (error.name === "AbortError") {
-      return res.status(408).json({ error: "Timeout ao enviar evento para a Meta", timeout_ms: 8000 });
+      return res.status(408).json({ error: "Timeout ao enviar evento para a Meta", timeout_ms: 5000 });
     }
     res.status(500).json({ error: "Erro interno no servidor CAPI." });
   }
