@@ -38,6 +38,7 @@ const ACCESS_TOKEN = "EAAQfmxkTTZCcBPHGbA2ojC29bVbNPa6GM3nxMxsZC29ijBmuyexVifaGn
 const META_URL = `https://graph.facebook.com/v19.0/${PIXEL_ID}/events`;
 
 // ✅ CORREÇÃO CRÍTICA: Normalização de acentos para nomes brasileiros
+// ✅ FBCLID FIX: Removido .toLowerCase() para preservar fbclid original
 function hashSHA256(value: string) {
   if (!value || typeof value !== 'string') {
     apiLogger.warn('⚠️ hashSHA256: Valor inválido:', value);
@@ -47,7 +48,6 @@ function hashSHA256(value: string) {
     .update(
       value
         .trim()
-        .toLowerCase()
         .normalize("NFD")
         .replace(/[ -\u036f]/g, "") // Remove acentos
     )
