@@ -1,6 +1,7 @@
-// ✅ DIGITAL PAISAGISMO CAPI V7.0 - IPv6 OTIMIZADO
+// ✅ DIGITAL PAISAGISMO CAPI V8.0 - IPv6 OTIMIZADO + DEDUPLICAÇÃO
 // Removido: normalização de acentos e eventos de vídeo
 // Adicionado: detecção inteligente IPv6 com fallback IPv4
+// Adicionado: sistema de deduplicação de eventos
 
 import type { NextApiRequest, NextApiResponse } from "next";
 import crypto from "crypto";
@@ -9,6 +10,46 @@ import zlib from "zlib";
 const PIXEL_ID = "765087775987515";
 const ACCESS_TOKEN = "EAAQfmxkTTZCcBPHGbA2ojC29bVbNPa6GM3nxMxsZC29ijBmuyexVifaGnrjFZBZBS6LEkaR29X3tc5TWn4SHHffeXiPvexZAYKP5mTMoYGx5AoVYaluaqBTtiKIjWALxuMZAPVcBk1PuYCb0nJfhpzAezh018LU3cT45vuEflMicoQEHHk3H5YKNVAPaUZC6yzhcQZDZD";
 const META_URL = `https://graph.facebook.com/v19.0/${PIXEL_ID}/events`;
+
+// ✅ SISTEMA DE DEDUPLICAÇÃO
+const eventCache = new Map<string, number>();
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutos
+const MAX_CACHE_SIZE = 10000; // Limite de eventos no cache
+
+function isDuplicateEvent(eventId: string): boolean {
+  const now = Date.now();
+  
+  // Limpeza automática de eventos expirados
+  let cleanedCount = 0;
+  for (const [id, timestamp] of eventCache.entries()) {
+    if (now - timestamp > CACHE_TTL) {
+      eventCache.delete(id);
+      cleanedCount++;
+    }
+  }
+  
+  if (cleanedCount > 0) {
+    console.log(`🧹 Cache limpo: ${cleanedCount} eventos expirados removidos`);
+  }
+  
+  // Verificar se é duplicata
+  if (eventCache.has(eventId)) {
+    console.warn('🚫 Evento duplicado bloqueado:', eventId);
+    return true;
+  }
+  
+  // Controle de tamanho do cache
+  if (eventCache.size >= MAX_CACHE_SIZE) {
+    const oldestKey = eventCache.keys().next().value;
+    eventCache.delete(oldestKey);
+    console.log('🗑️ Cache cheio: evento mais antigo removido');
+  }
+  
+  // Adicionar ao cache
+  eventCache.set(eventId, now);
+  console.log('✅ Evento adicionado ao cache de deduplicação:', eventId);
+  return false;
+}
 
 // ✅ SIMPLIFICADO: Hash SHA256 sem normalização de acentos
 function hashSHA256(value: string): string | null {
@@ -23,6 +64,7 @@ function hashSHA256(value: string): string | null {
 
 // ✅ IPv6 INTELIGENTE: Detecção e validação de IP com prioridade IPv6
 function getClientIP(req: NextApiRequest): { ip: string; type: 'IPv4' | 'IPv6' | 'unknown' } {
+  // ... existing code ...
   // Fontes de IP em ordem de prioridade
   const ipSources = [
     req.headers['cf-connecting-ip'], // Cloudflare
@@ -121,6 +163,7 @@ function getClientIP(req: NextApiRequest): { ip: string; type: 'IPv4' | 'IPv6' |
 
 // ✅ NOVA FUNÇÃO: Processamento robusto do FBC
 function processFbc(fbc: string): string | null {
+  // ... existing code ...
   if (!fbc || typeof fbc !== 'string') {
     console.warn('⚠️ FBC inválido:', fbc);
     return null;
@@ -217,7 +260,30 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(400).json({ error: "Payload inválido - campo 'data' obrigatório" });
     }
 
-    const enrichedData = req.body.data.map((event: any) => {
+    // 🛡️ FILTRO DE DEDUPLICAÇÃO: Remover eventos duplicados
+    const originalCount = req.body.data.length;
+    const filteredData = req.body.data.filter((event: any) => {
+      const eventId = event.event_id || `evt_${Date.now()}_${Math.random().toString(36).substr(2, 10)}`;
+      return !isDuplicateEvent(eventId);
+    });
+    
+    const duplicatesBlocked = originalCount - filteredData.length;
+    
+    if (duplicatesBlocked > 0) {
+      console.log(`🛡️ Deduplicação: ${duplicatesBlocked} eventos duplicados bloqueados de ${originalCount}`);
+    }
+    
+    if (filteredData.length === 0) {
+      return res.status(200).json({ 
+        message: 'Todos os eventos foram filtrados como duplicatas',
+        duplicates_blocked: duplicatesBlocked,
+        original_count: originalCount,
+        cache_size: eventCache.size
+      });
+    }
+
+    const enrichedData = filteredData.map((event: any) => {
+      // ... existing code ...
       // Garantir session_id único se não vier do frontend
       let sessionId = event.session_id;
       if (!sessionId) {
@@ -313,10 +379,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 8000);
 
-    console.log("🔄 Enviando evento para Meta CAPI (IPv6 Otimizado):", {
+    console.log("🔄 Enviando evento para Meta CAPI (IPv6 + Deduplicação):", {
       events: enrichedData.length,
+      original_events: originalCount,
+      duplicates_blocked: duplicatesBlocked,
       event_names: enrichedData.map(e => e.event_name),
-      ip_type: ipType, // 🌐 Novo: tipo de IP detectado
+      ip_type: ipType,
       client_ip: ip,
       has_pii: false,
       has_geo_data: enrichedData.some(e => e.user_data.country || e.user_data.state || e.user_data.city),
@@ -324,7 +392,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         .filter(e => e.user_data.country)
         .map(e => `${e.user_data.country}/${e.user_data.state}/${e.user_data.city}`)
         .slice(0, 3),
-      fbc_processed: enrichedData.filter(e => e.user_data.fbc).length
+      fbc_processed: enrichedData.filter(e => e.user_data.fbc).length,
+      cache_size: eventCache.size
     });
 
     const response = await fetch(`${META_URL}?access_token=${ACCESS_TOKEN}`, {
@@ -343,7 +412,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         status: response.status,
         data,
         events: enrichedData.length,
-        ip_type: ipType
+        ip_type: ipType,
+        duplicates_blocked
       });
 
       return res.status(response.status).json({
@@ -355,14 +425,22 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     console.log("✅ Evento enviado com sucesso para Meta CAPI:", {
       events_processed: enrichedData.length,
+      duplicates_blocked: duplicatesBlocked,
       processing_time_ms: responseTime,
       compression_used: shouldCompress,
-      ip_type: ipType // 🌐 Confirmação do tipo de IP usado
+      ip_type: ipType,
+      cache_size: eventCache.size
     });
 
     res.status(200).json({
       ...data,
-      ip_info: { type: ipType, address: ip } // 🌐 Info adicional para debug
+      ip_info: { type: ipType, address: ip },
+      deduplication_info: {
+        original_events: originalCount,
+        processed_events: enrichedData.length,
+        duplicates_blocked: duplicatesBlocked,
+        cache_size: eventCache.size
+      }
     });
 
   } catch (error: any) {
