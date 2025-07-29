@@ -8,7 +8,7 @@ import crypto from "crypto";
 import zlib from "zlib";
 
 const PIXEL_ID = "765087775987515";
-const ACCESS_TOKEN = "EAAQfmxkTTZCcBPJy7KylZA9vH9GZBPCXRJX2b57Be1065yvFoOzSfBzRZCFnHzM62ZC2zmKp3sLuHpaZA0BPOTF5ellSuJcG10d41TD3PX4Fw1XcZAUSmQ0cvkF1rbDAfUdChGOpwZBdmgKnyMpMipZCfYyUXaHsZB5eNayraeEI8WQ7G3FuaGdU4ZCoTX2SAuoNwZDZD";
+const ACCESS_TOKEN = "EAAQfmxkTTZCcBPHGbA2ojC29bVbNPa6GM3nxMxsZC29ijBmuyexVifaGnrjFZBZBS6LEkaR29X3tc5TWn4SHHffeXiPvexZAYKP5mTMoYGx5AoVYaluaqBTtiKIjWALxuMZAPVcBk1PuYCb0nJfhpzAezh018LU3cT45vuEflMicoQEHHk3H5YKNVAPaUZC6yzhcQZDZD";
 const META_URL = `https://graph.facebook.com/v19.0/${PIXEL_ID}/events`;
 
 // ✅ SISTEMA DE DEDUPLICAÇÃO
@@ -64,7 +64,6 @@ function hashSHA256(value: string): string | null {
 
 // ✅ IPv6 INTELIGENTE: Detecção e validação de IP com prioridade IPv6
 function getClientIP(req: NextApiRequest): { ip: string; type: 'IPv4' | 'IPv6' | 'unknown' } {
-  // ... existing code ...
   // Fontes de IP em ordem de prioridade
   const ipSources = [
     req.headers['cf-connecting-ip'], // Cloudflare
@@ -163,7 +162,6 @@ function getClientIP(req: NextApiRequest): { ip: string; type: 'IPv4' | 'IPv6' |
 
 // ✅ NOVA FUNÇÃO: Processamento robusto do FBC
 function processFbc(fbc: string): string | null {
-  // ... existing code ...
   if (!fbc || typeof fbc !== 'string') {
     console.warn('⚠️ FBC inválido:', fbc);
     return null;
@@ -283,7 +281,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     const enrichedData = filteredData.map((event: any) => {
-      // ... existing code ...
       // Garantir session_id único se não vier do frontend
       let sessionId = event.session_id;
       if (!sessionId) {
@@ -303,7 +300,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
       // Padronizar custom_data (removido processamento de VideoProgress)
       const customData = { ...event.custom_data };
-      if (["PageView", "ViewContent"].includes(eventName)) {
+      if (eventName === "PageView") {
         delete customData.value;
         delete customData.currency;
       }
@@ -316,7 +313,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
       // ✅ SEM PII: user_data apenas com dados técnicos e geo-enrichment
       const userData: any = {
-        ...(externalId && { external_id: [externalId] }),
+        ...(externalId && { external_id: externalId }),
         client_ip_address: ip, // 🌐 IP otimizado (IPv6 prioritário)
         client_user_agent: userAgent,
       };
