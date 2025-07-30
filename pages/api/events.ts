@@ -281,17 +281,25 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     const enrichedData = filteredData.map((event: any) => {
-      // Garantir session_id único se não vier do frontend
-      let sessionId = event.session_id;
-      if (!sessionId) {
-        if (req.cookies && req.cookies.session_id) {
-          sessionId = req.cookies.session_id;
-        } else {
-          sessionId = `sess_${Date.now()}_${Math.random().toString(36).substr(2, 10)}`;
-        }
-      }
+      // ✅ CORREÇÃO CRÍTICA: Usar external_id do frontend (já em SHA256)
+      // O DeduplicationEngine já gera external_id em formato SHA256 correto
+      let externalId = event.user_data?.external_id || null;
       
-      const externalId = sessionId ? hashSHA256(sessionId) : null;
+      // Fallback apenas se não vier external_id do frontend
+      if (!externalId) {
+        let sessionId = event.session_id;
+        if (!sessionId) {
+          if (req.cookies && req.cookies.session_id) {
+            sessionId = req.cookies.session_id;
+          } else {
+            sessionId = `sess_${Date.now()}_${Math.random().toString(36).substr(2, 10)}`;
+          }
+        }
+        externalId = sessionId ? hashSHA256(sessionId) : null;
+        console.log('⚠️ External_id gerado no servidor (fallback):', externalId);
+      } else {
+        console.log('✅ External_id recebido do frontend (SHA256):', externalId);
+      }
       const eventId = event.event_id || `evt_${Date.now()}_${Math.random().toString(36).substr(2, 10)}`;
       const eventName = event.event_name || "Lead";
       const eventSourceUrl = event.event_source_url || origin || req.headers.referer || "https://www.digitalpaisagismo.com";
@@ -367,84 +375,88 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const shouldCompress = Buffer.byteLength(JSON.stringify(payload)) > 2048;
     const body = shouldCompress ? zlib.gzipSync(JSON.stringify(payload)) : JSON.stringify(payload);
     const headers = {
-      "Content-Type": "application/json",
-      "Connection": "keep-alive",
-      "User-Agent": "DigitalPaisagismo-CAPI-Proxy/1.0",
-      ...(shouldCompress && { "Content-Encoding": "gzip" })
-    };
+       "Content-Type": "application/json",
+       "Connection": "keep-alive",
+       "User-Agent": "DigitalPaisagismo-CAPI-Proxy/1.0",
+       ...(shouldCompress && { "Content-Encoding": "gzip" })
+     };
 
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 8000);
+     const controller = new AbortController();
+     const timeout = setTimeout(() => controller.abort(), 8000);
 
-    console.log("🔄 Enviando evento para Meta CAPI (IPv6 + Deduplicação):", {
-      events: enrichedData.length,
-      original_events: originalCount,
-      duplicates_blocked: duplicatesBlocked,
-      event_names: enrichedData.map(e => e.event_name),
-      ip_type: ipType,
-      client_ip: ip,
-      has_pii: false,
-      has_geo_data: enrichedData.some(e => e.user_data.country || e.user_data.state || e.user_data.city),
-      geo_locations: enrichedData
-        .filter(e => e.user_data.country)
-        .map(e => `${e.user_data.country}/${e.user_data.state}/${e.user_data.city}`)
-        .slice(0, 3),
-      fbc_processed: enrichedData.filter(e => e.user_data.fbc).length,
-      cache_size: eventCache.size
-    });
+     console.log("🔄 Enviando evento para Meta CAPI (IPv6 + Deduplicação + SHA256):", {
+       events: enrichedData.length,
+       original_events: originalCount,
+       duplicates_blocked: duplicatesBlocked,
+       event_names: enrichedData.map(e => e.event_name),
+       ip_type: ipType,
+       client_ip: ip,
+       has_pii: false,
+       external_ids_count: enrichedData.filter(e => e.user_data.external_id).length,
+       external_ids_from_frontend: enrichedData.filter(e => e.user_data.external_id && e.user_data.external_id.length === 64).length,
+       has_geo_data: enrichedData.some(e => e.user_data.country || e.user_data.state || e.user_data.city),
+       geo_locations: enrichedData
+         .filter(e => e.user_data.country)
+         .map(e => `${e.user_data.country}/${e.user_data.state}/${e.user_data.city}`)
+         .slice(0, 3),
+       fbc_processed: enrichedData.filter(e => e.user_data.fbc).length,
+       cache_size: eventCache.size
+     });
 
-    const response = await fetch(`${META_URL}?access_token=${ACCESS_TOKEN}`, {
-      method: "POST",
-      headers,
-      body,
-      signal: controller.signal
-    });
+     const response = await fetch(`${META_URL}?access_token=${ACCESS_TOKEN}`, {
+       method: "POST",
+       headers,
+       body,
+       signal: controller.signal
+     });
 
-    clearTimeout(timeout);
-    const data = await response.json();
-    const responseTime = Date.now() - startTime;
+     clearTimeout(timeout);
+     const data = await response.json();
+     const responseTime = Date.now() - startTime;
 
-    if (!response.ok) {
-      console.error("❌ Erro da Meta CAPI:", {
-        status: response.status,
-        data,
-        events: enrichedData.length,
-        ip_type: ipType,
-        duplicates_blocked
-      });
+     if (!response.ok) {
+       console.error("❌ Erro da Meta CAPI:", {
+         status: response.status,
+         data,
+         events: enrichedData.length,
+         ip_type: ipType,
+         duplicates_blocked
+       });
 
-      return res.status(response.status).json({
-        error: "Erro da Meta",
-        details: data,
-        processing_time_ms: responseTime
-      });
-    }
+       return res.status(response.status).json({
+         error: "Erro da Meta",
+         details: data,
+         processing_time_ms: responseTime
+       });
+     }
 
-    console.log("✅ Evento enviado com sucesso para Meta CAPI:", {
-      events_processed: enrichedData.length,
-      duplicates_blocked: duplicatesBlocked,
-      processing_time_ms: responseTime,
-      compression_used: shouldCompress,
-      ip_type: ipType,
-      cache_size: eventCache.size
-    });
+     console.log("✅ Evento enviado com sucesso para Meta CAPI:", {
+       events_processed: enrichedData.length,
+       duplicates_blocked: duplicatesBlocked,
+       processing_time_ms: responseTime,
+       compression_used: shouldCompress,
+       ip_type: ipType,
+       external_ids_sent: enrichedData.filter(e => e.user_data.external_id).length,
+       sha256_format_count: enrichedData.filter(e => e.user_data.external_id && e.user_data.external_id.length === 64).length,
+       cache_size: eventCache.size
+     });
 
-    res.status(200).json({
-      ...data,
-      ip_info: { type: ipType, address: ip },
-      deduplication_info: {
-        original_events: originalCount,
-        processed_events: enrichedData.length,
-        duplicates_blocked: duplicatesBlocked,
-        cache_size: eventCache.size
-      }
-    });
+     res.status(200).json({
+       ...data,
+       ip_info: { type: ipType, address: ip },
+       deduplication_info: {
+         original_events: originalCount,
+         processed_events: enrichedData.length,
+         duplicates_blocked: duplicatesBlocked,
+         cache_size: eventCache.size
+       }
+     });
 
-  } catch (error: any) {
-    console.error("❌ Erro no Proxy CAPI:", error);
-    if (error.name === "AbortError") {
-      return res.status(408).json({ error: "Timeout ao enviar evento para a Meta", timeout_ms: 8000 });
-    }
-    res.status(500).json({ error: "Erro interno no servidor CAPI." });
-  }
-}
+   } catch (error: any) {
+     console.error("❌ Erro no Proxy CAPI:", error);
+     if (error.name === "AbortError") {
+       return res.status(408).json({ error: "Timeout ao enviar evento para a Meta", timeout_ms: 8000 });
+     }
+     res.status(500).json({ error: "Erro interno no servidor CAPI." });
+   }
+ }
