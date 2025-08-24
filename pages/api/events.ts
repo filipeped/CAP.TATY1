@@ -10,8 +10,8 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import crypto from "crypto";
 import zlib from "zlib";
 
-const PIXEL_ID = "765087775987515";
-const ACCESS_TOKEN = "EAAQfmxkTTZCcBPHGbA2ojC29bVbNPa6GM3nxMxsZC29ijBmuyexVifaGnrjFZBZBS6LEkaR29X3tc5TWn4SHHffeXiPvexZAYKP5mTMoYGx5AoVYaluaqBTtiKIjWALxuMZAPVcBk1PuYCb0nJfhpzAezh018LU3cT45vuEflMicoQEHHk3H5YKNVAPaUZC6yzhcQZDZD";
+const PIXEL_ID = "1406446857128984";
+const ACCESS_TOKEN = "EAALIy2dZAggsBPfyle5Gf2pfKehpACDintxED7A850eJKa7PUhPuxE1SX2VeRDPpCctiCOJOdduBcAcMVLKhkDZC4ZBpNtwmIWih0PLYZBOtfhUnUNBkzDFJWjGBF2hxGnZBpFyLPoV1ZCajryfGt9V2agToq8kXPVFlQwRXhYEiS0pk9EOOZBXxsmdxRWcNwZDZD";
 const META_URL = `https://graph.facebook.com/v19.0/${PIXEL_ID}/events`;
 
 // ✅ SISTEMA DE DEDUPLICAÇÃO
@@ -96,7 +96,7 @@ function getClientIP(
   function isValidIPv6(ip: string): boolean {
     const cleanIP = ip.replace(/^\[|\]$/g, "");
     const ipv6Regex =
-      /^(([0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|:((:[0-9a-fA-F]{1,4}){1,7}|:)|fe80:(:[0-9a-fA-F]{0,4}){0,4}%[0-9a-zA-Z]{1,}|::(ffff(:0{1,4}){0,1}:){0,1}((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])|([0-9a-fA-F]{1,4}:){1,4}:((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9]))$/;
+      /^(([0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|:((:[0-9a-fA-F]{1,7})|:)|fe80:(:[0-9a-fA-F]{0,4}){0,4}%[0-9a-zA-Z]{1,}|::(ffff(:0{1,4}){0,1}:){0,1}((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])|([0-9a-fA-F]{1,4}:){1,4}:((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9]))$/;
     return ipv6Regex.test(cleanIP);
   }
 
@@ -184,7 +184,7 @@ function processFbc(fbc: string): string | null {
 }
 
 const RATE_LIMIT = 30;
-const rateLimitMap = new Map<string, number[]>();
+const rateLimitMap: Map<string, number[]> = new Map();
 
 function rateLimit(ip: string): boolean {
   const now = Date.now();
@@ -209,12 +209,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const origin = (req.headers.origin as string) || "";
 
   const ALLOWED_ORIGINS = [
-    "https://www.digitalpaisagismo.com",
-    "https://digitalpaisagismo.com",
-    "https://cap.digitalpaisagismo.com",
-    "https://atendimento.digitalpaisagismo.com",
-    "https://projeto.digitalpaisagismo.com",
-    "https://www.projeto.digitalpaisagismo.com",
+    "https://www.personaltatyschapuis.com",
+    "https://personaltatyschapuis.com",
     "http://localhost:3000",
     "http://localhost:8080",
     "http://localhost:8081",
@@ -222,7 +218,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   res.setHeader(
     "Access-Control-Allow-Origin",
-    ALLOWED_ORIGINS.includes(origin) ? origin : "https://www.digitalpaisagismo.com"
+    ALLOWED_ORIGINS.includes(origin) ? origin : "https://www.personaltatyschapuis.com"
   );
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With");
@@ -290,7 +286,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         event.event_id || `evt_${Date.now()}_${Math.random().toString(36).substr(2, 10)}`;
       const eventName = event.event_name || "Lead";
       const eventSourceUrl =
-        event.event_source_url || origin || (req.headers.referer as string) || "https://www.digitalpaisagismo.com";
+        event.event_source_url || origin || (req.headers.referer as string) || "https://www.personaltatyschapuis.com";
       const eventTime = event.event_time ? Math.floor(Number(event.event_time)) : Math.floor(Date.now() / 1000);
       const actionSource = event.action_source || "website";
 
