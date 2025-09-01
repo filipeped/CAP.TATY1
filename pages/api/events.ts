@@ -272,7 +272,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   
   // 🌐 DETECÇÃO INTELIGENTE DE IP: Prioriza IPv6
   const { ip, type: ipType } = getClientIP(req);
-  const formattedIP = formatIPForMeta(ip, ipType); // ✅ CORREÇÃO APLICADA
+  const formattedIP = formatIPForMeta(ip, ipType);
   
   const userAgent = req.headers["user-agent"] || "";
   const origin = req.headers.origin;
@@ -396,6 +396,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         customData.currency = customData.currency || "BRL";
       }
 
+      // 🌐 FORMATAÇÃO OTIMIZADA: IP no formato preferido pela Meta
+      const formattedIP = formatIPForMeta(ip, ipType);
+      
       // ✅ SEM PII: user_data apenas com dados técnicos e geo-enrichment
       const userData: any = {
         ...(externalId && { external_id: externalId }),
@@ -472,7 +475,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     const payload = { data: enrichedData };
     const shouldCompress = Buffer.byteLength(JSON.stringify(payload)) > 2048;
-    const body = shouldCompress ? zlib.gzipSync(JSON.stringify(payload)) : JSON.stringify(payload);
+    const body = shouldCompress ? new Uint8Array(zlib.gzipSync(JSON.stringify(payload))) : JSON.stringify(payload);
     const headers = {
        "Content-Type": "application/json",
        "Connection": "keep-alive",
